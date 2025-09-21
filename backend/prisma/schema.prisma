@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  password     String
+  role         Role      @default(USER)
+  tasks        Task[]    @relation("UserTasks")
+  tasksCreated Task[]    @relation("TasksCreated")
+  messagesSent Message[] @relation("MessagesSent")
+  messagesRecv Message[] @relation("MessagesRecv")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum Role {
+  USER
+  MANAGER
+}
+
+model Task {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  status       Status   @default(TODO)
+  assignedTo   User     @relation("UserTasks", fields: [assignedToId], references: [id])
+  assignedToId String
+  createdBy    User     @relation("TasksCreated", fields: [createdById], references: [id])
+  createdById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum Status {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  sender     User     @relation("MessagesSent", fields: [senderId], references: [id])
+  senderId   String
+  receiver   User     @relation("MessagesRecv", fields: [receiverId], references: [id])
+  receiverId String
+  content    String
+  createdAt  DateTime @default(now())
+}
