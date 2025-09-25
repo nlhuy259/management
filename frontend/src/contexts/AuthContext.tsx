@@ -30,16 +30,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in on app start
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
+    // Check if user is logged in on app start (per-tab session)
+    const token = sessionStorage.getItem('token');
+    const userData = sessionStorage.getItem('user');
     
     if (token && userData) {
       try {
         setUser(JSON.parse(userData));
-      } catch (error) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+      } catch (_error) {
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('user');
       }
     }
     setLoading(false);
@@ -64,8 +64,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         
         setUser(userData);
-        localStorage.setItem('token', 'dummy-token'); // You might want to use actual JWT token
-        localStorage.setItem('user', JSON.stringify(userData));
+        sessionStorage.setItem('token', 'dummy-token'); // You might want to use actual JWT token
+        sessionStorage.setItem('user', JSON.stringify(userData));
         return true;
       }
       return false;
@@ -88,14 +88,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok) {
         const data = await response.json();
         const userData = {
-          id: Date.now().toString(), // Temporary ID, should come from backend
+          id: Date.now().toString(), // Temporary ID
           name: data.name,
           email: data.email,
         };
         
         setUser(userData);
-        localStorage.setItem('token', 'dummy-token');
-        localStorage.setItem('user', JSON.stringify(userData));
+        sessionStorage.setItem('token', 'dummy-token');
+        sessionStorage.setItem('user', JSON.stringify(userData));
         return true;
       }
       return false;
@@ -107,8 +107,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
   };
 
   const value = {

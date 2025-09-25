@@ -11,6 +11,7 @@ export type UserInput = {
 export async function getUsers(){
   const users = await prisma.user.findMany({
     select: {
+      id: true,
       email: true,
       name: true,
       createdAt: true,

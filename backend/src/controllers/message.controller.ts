@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { createMessage, getConversation } from "../services/message.service";
+import { createMessage, getConversation, getCurrentMessages } from "../services/message.service";
 
 //  Gửi message
 export const sendMessage = async (req: Request, res: Response) => {
@@ -22,3 +22,14 @@ export const getMessages = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Error fetching messages", error });
   }
 };
+
+export const getThreeCurrentMessages = async (req: Request, res: Response) => {
+  try{
+    const { userId } = req.params;
+    const messages =  await getCurrentMessages(String(userId))
+    res.json({ messages });
+  }catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching messages" });
+  }
+}

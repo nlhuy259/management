@@ -23,13 +23,11 @@ export default function Navbar() {
 
   return (
     <nav className="bg-white shadow-md px-6 py-3 flex justify-between items-center">
+      <Link href="/dashboard">
       <h1 className="text-2xl font-bold text-blue-600">Management</h1>
-      
+      </Link>
       {user ? (
         <div className="flex items-center space-x-4">
-          <Link href="/dashboard" className="text-gray-700 hover:text-blue-600 font-medium">
-            Dashboard
-          </Link>
           <Link href="/messages" className="text-gray-700 hover:text-blue-600 font-medium">
             Messages
           </Link>

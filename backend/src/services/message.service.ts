@@ -28,4 +28,20 @@ export async function getConversation(userA: string, userB: string): Promise<Mes
   });
   return messages;
 }
+export async function getCurrentMessages(userId: string): Promise<Message[]> {
+  const messages = await prisma.message.findMany({
+    where: {
+      receiverId: userId, // nhận tin nhắn
+    },
+    include: {
+      receiver: { select: { id: true, name: true, email: true } },
+      sender: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    distinct: ["senderId"], 
+    take: 3,
+  });
+
+  return messages
+}
 

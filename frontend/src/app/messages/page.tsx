@@ -1,85 +1,81 @@
 "use client";
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import { getSocket } from '@/contexts/socket';
 
-interface Message {
-  id: number;
-  from: string;
-  message: string;
-  time: string;
-  unread: boolean;
-}
-
-interface Conversation {
-  id: number;
-  name: string;
-  lastMessage: string;
-  time: string;
-  unreadCount: number;
-  avatar: string;
-}
+interface ConversationUser { id: string; name: string }
+interface ApiMessage { id: string; senderId: string; receiverId: string; content: string; createdAt: string }
 
 export default function MessagesPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
+  const [selectedConversationUserId, setSelectedConversationUserId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
+  const [users, setUsers] = useState<ConversationUser[]>([]);
+  const [messages, setMessages] = useState<ApiMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const socketRef = useRef<ReturnType<typeof getSocket> | null>(null);
 
-  // Mock data
-  const conversations: Conversation[] = [
-    {
-      id: 1,
-      name: "John Doe",
-      lastMessage: "Hey, how's the project going?",
-      time: "2 min ago",
-      unreadCount: 2,
-      avatar: "JD"
-    },
-    {
-      id: 2,
-      name: "Jane Smith",
-      lastMessage: "Can we schedule a meeting?",
-      time: "1 hour ago",
-      unreadCount: 0,
-      avatar: "JS"
-    },
-    {
-      id: 3,
-      name: "Mike Johnson",
-      lastMessage: "The report is ready for review",
-      time: "3 hours ago",
-      unreadCount: 1,
-      avatar: "MJ"
-    },
-    {
-      id: 4,
-      name: "Sarah Wilson",
-      lastMessage: "Thanks for the update!",
-      time: "1 day ago",
-      unreadCount: 0,
-      avatar: "SW"
-    }
-  ];
+  useEffect(() => {
+    if (!user) return;
+    const loadUsers = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/api/users');
+        const data: unknown = await res.json();
+        type RawUser =
+        {
+          id: string;
+          name?: string
+        };
+        const rawUsers = (Array.isArray(data) ? data : (data as { users?: RawUser[] })?.users || []) as RawUser[];
+        const others = rawUsers.filter((u) => (u as { id: string }).id !== user.id);
+        setUsers(others.map((u) => ({ id: (u as { id: string }).id, name: (u as { name?: string }).name || 'Unknown' })));
+      } catch (e) {
+        console.error('Failed to load users', e);
+      }
+    };
+    loadUsers();
+  }, [user]);
 
-  const messages: { [key: number]: Message[] } = {
-    1: [
-      { id: 1, from: "John Doe", message: "Hey, how's the project going?", time: "2 min ago", unread: true },
-      { id: 2, from: "You", message: "Going well! We're on track for the deadline.", time: "1 min ago", unread: false },
-      { id: 3, from: "John Doe", message: "Great to hear! Let me know if you need any help.", time: "2 min ago", unread: true },
-    ],
-    2: [
-      { id: 1, from: "Jane Smith", message: "Can we schedule a meeting?", time: "1 hour ago", unread: false },
-      { id: 2, from: "You", message: "Sure! How about tomorrow at 2 PM?", time: "45 min ago", unread: false },
-    ],
-    3: [
-      { id: 1, from: "Mike Johnson", message: "The report is ready for review", time: "3 hours ago", unread: true },
-    ],
-    4: [
-      { id: 1, from: "You", message: "I've updated the project timeline", time: "1 day ago", unread: false },
-      { id: 2, from: "Sarah Wilson", message: "Thanks for the update!", time: "1 day ago", unread: false },
-    ]
-  };
+  useEffect(() => {
+    if (!user || !selectedConversationUserId) return;
+    let aborted = false;
+    const loadInitial = async () => {
+      try {
+        setLoadingMessages(true);
+        const url = `http://localhost:5000/api/messages/get?user1=${user.id}&user2=${selectedConversationUserId}`;
+        const res = await fetch(url);
+        const data: unknown = await res.json();
+        const parsed = (Array.isArray(data) ? data : (data as { messages?: ApiMessage[] })?.messages || []) as ApiMessage[];
+        if (!aborted) setMessages(parsed);
+      } catch (e) {
+        if (!aborted) console.error('Failed to load messages', e);
+      } finally {
+        if (!aborted) setLoadingMessages(false);
+      }
+    };
+    loadInitial();
+
+    const socket = getSocket();
+    socketRef.current = socket;
+    socket.emit('chat:join', { userId: user.id });
+
+    const onIncoming = (msg: ApiMessage) => {
+      const isInThisConversation = (
+        (msg.senderId === user.id && msg.receiverId === selectedConversationUserId) ||
+        (msg.senderId === selectedConversationUserId && msg.receiverId === user.id)
+      );
+      if (isInThisConversation) {
+        setMessages(prev => [...prev, msg]);
+      }
+    };
+    socket.on('chat:message', onIncoming);
+    return () => {
+      aborted = true;
+      socket.off('chat:message', onIncoming);
+    };
+  }, [user, selectedConversationUserId]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -87,12 +83,15 @@ export default function MessagesPage() {
     }
   }, [user, loading, router]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newMessage.trim() && selectedConversation) {
-      // Here you would typically send the message to your backend
-      console.log('Sending message:', newMessage);
+    if (!newMessage.trim() || !selectedConversationUserId || !user) return;
+    try {
+      const socket = socketRef.current ?? getSocket();
+      socket.emit('chat:send', { senderId: user.id, receiverId: selectedConversationUserId, content: newMessage.trim() });
       setNewMessage('');
+    } catch (err) {
+      console.error('Failed to send message', err);
     }
   };
 
@@ -121,32 +120,25 @@ export default function MessagesPage() {
                 <h3 className="text-lg font-semibold text-gray-800">Conversations</h3>
               </div>
               <div className="overflow-y-auto">
-                {conversations.map((conversation) => (
+                {users.map((u) => (
                   <div
-                    key={conversation.id}
-                    onClick={() => setSelectedConversation(conversation.id)}
+                    key={u.id}
+                    onClick={() => setSelectedConversationUserId(u.id)}
                     className={`p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
-                      selectedConversation === conversation.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                      selectedConversationUserId === u.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
                     }`}
                   >
                     <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                        {conversation.avatar}
+                        {u.name?.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-medium text-gray-900 truncate">
-                            {conversation.name}
-                          </h4>
-                          <span className="text-xs text-gray-500">{conversation.time}</span>
+                          <h4 className="text-sm font-medium text-gray-900 truncate">{u.name}</h4>
+                          <span className="text-xs text-gray-500"></span>
                         </div>
                         <div className="flex items-center justify-between mt-1">
-                          <p className="text-sm text-gray-600 truncate">{conversation.lastMessage}</p>
-                          {conversation.unreadCount > 0 && (
-                            <span className="bg-blue-600 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
-                              {conversation.unreadCount}
-                            </span>
-                          )}
+                          <p className="text-sm text-gray-600 truncate">&nbsp;</p>
                         </div>
                       </div>
                     </div>
@@ -157,40 +149,34 @@ export default function MessagesPage() {
 
             {/* Messages Area */}
             <div className="flex-1 flex flex-col">
-              {selectedConversation ? (
+              {selectedConversationUserId ? (
                 <>
                   {/* Chat Header */}
                   <div className="p-4 border-b border-gray-200 bg-gray-50">
                     <div className="flex items-center space-x-3">
                       <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                        {conversations.find(c => c.id === selectedConversation)?.avatar}
+                        {users.find(u => u.id === selectedConversationUserId)?.name?.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase()}
                       </div>
-                      <h4 className="font-medium text-gray-900">
-                        {conversations.find(c => c.id === selectedConversation)?.name}
-                      </h4>
+                      <h4 className="font-medium text-gray-900">{users.find(u => u.id === selectedConversationUserId)?.name}</h4>
                     </div>
                   </div>
 
                   {/* Messages */}
                   <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {messages[selectedConversation]?.map((message) => (
+                    {loadingMessages ? (
+                      <div className="text-center text-gray-500">Loading messages...</div>
+                    ) : messages.length === 0 ? (
+                      <div className="text-center text-gray-500">No messages yet</div>
+                    ) : messages.map((m) => (
                       <div
-                        key={message.id}
-                        className={`flex ${message.from === 'You' ? 'justify-end' : 'justify-start'}`}
+                        key={m.id}
+                        className={`flex ${m.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
                       >
                         <div
-                          className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                            message.from === 'You'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-200 text-gray-900'
-                          }`}
+                          className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${m.senderId === user?.id ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
                         >
-                          <p className="text-sm">{message.message}</p>
-                          <p className={`text-xs mt-1 ${
-                            message.from === 'You' ? 'text-blue-100' : 'text-gray-500'
-                          }`}>
-                            {message.time}
-                          </p>
+                          <p className="text-sm">{m.content}</p>
+                          <p className={`text-xs mt-1 ${m.senderId === user?.id ? 'text-blue-100' : 'text-gray-500'}`}>{new Date(m.createdAt).toLocaleString()}</p>
                         </div>
                       </div>
                     ))}

@@ -32,10 +32,24 @@ export async function updateTask(id: string, input: UpdateTaskInput): Promise<Ta
 	return task;
 }
 export async function getTaskById(id: string): Promise<Task> {
-	const task = await prisma.task.findUnique({ where: { id } });
+	const task = await prisma.task.findUnique({
+		where: { id },
+		include: {
+		  assignedTo: {
+			select: {  name: true, email: true },
+		  },
+		  createdBy: {
+			select: { name: true, email: true },
+		  },
+		},});
 	if (!task) throw new Error("Task not found");
 	return task;
 }
+export async function getTaskByUserId(userId: string): Promise<Task[]> {
+	return await prisma.task.findMany({
+	  where: { assignedToId: userId }
+	});
+  }
 export async function deleteTask(id: string): Promise<void> {
 	await prisma.task.delete({ where: { id } });
 }
