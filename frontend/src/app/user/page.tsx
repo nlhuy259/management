@@ -2,11 +2,15 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import { useTasks } from '@/contexts/TaskContext';
 
 export default function UserPage() {
 	const { user, loading } = useAuth();
+	const {tasks,loading:taskLoading} = useTasks();
 	const router = useRouter();
 	const [isEditing, setIsEditing] = useState(false);
+	type Status = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
+	type StatusStats = Record<Status, number>;
 	const [formData, setFormData] = useState({
 		name: '',
 		email: '',
@@ -27,6 +31,7 @@ export default function UserPage() {
 				newPassword: '',
 				confirmPassword: ''
 			});
+			
 		}
 	}, [user, loading, router]);
 
@@ -44,7 +49,7 @@ export default function UserPage() {
 		// success message
 	};
 
-	if (loading) {
+	if (loading||taskLoading) {
 		return (
 			<div className="min-h-screen bg-gray-100 p-6 flex items-center justify-center">
 				<div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -55,7 +60,17 @@ export default function UserPage() {
 	if (!user) {
 		return null;
 	}
-
+	const initialStats: StatusStats = {
+		TODO: 0,
+		IN_PROGRESS: 0,
+		REVIEW: 0,
+		DONE: 0,
+	  };
+	  
+	  const stats = tasks.reduce((acc, task) => {
+		acc[task.status] += 1;
+		return acc;
+	  }, initialStats);
 	return (
 		<div className="min-h-screen bg-gray-100 p-6">
 			<div className="max-w-2xl mx-auto">
@@ -184,17 +199,24 @@ export default function UserPage() {
 					<div className="mt-8 pt-6 border-t">
 						<h4 className="text-lg font-medium text-gray-800 mb-4">Account Statistics</h4>
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+							{/* Tasks Completed */}
 							<div className="bg-blue-50 p-4 rounded-lg text-center">
-								<div className="text-2xl font-bold text-blue-600">12</div>
+								<div className="text-2xl font-bold text-blue-600">{stats.DONE ?? 0}</div>
 								<div className="text-sm text-blue-800">Tasks Completed</div>
 							</div>
+
+							{/* Tasks In Progress */}
 							<div className="bg-green-50 p-4 rounded-lg text-center">
-								<div className="text-2xl font-bold text-green-600">8</div>
-								<div className="text-sm text-green-800">Active Projects</div>
+								<div className="text-2xl font-bold text-green-600">
+									{(stats.TODO ?? 0) + (stats.IN_PROGRESS ?? 0) + (stats.REVIEW ?? 0)}
+								</div>
+								<div className="text-sm text-green-800">Active Tasks</div>
 							</div>
+
+							{/* Total Tasks */}
 							<div className="bg-purple-50 p-4 rounded-lg text-center">
-								<div className="text-2xl font-bold text-purple-600">24</div>
-								<div className="text-sm text-purple-800">Messages Sent</div>
+								<div className="text-2xl font-bold text-purple-600">{tasks.length}</div>
+								<div className="text-sm text-purple-800">Total Tasks</div>
 							</div>
 						</div>
 					</div>
