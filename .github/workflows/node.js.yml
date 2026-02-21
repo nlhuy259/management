@@ -9,6 +9,9 @@ on:
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
+    env:
+      # Required for Prisma schema (url = env("DATABASE_URL")). Not used at runtime — tests mock DB.
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci_test
 
     strategy:
       matrix:
@@ -26,12 +29,12 @@ jobs:
         run: |
           cd backend
           npm install
-          
+
       - name: Generate Prisma Client
         run: |
           cd backend
           npx prisma generate
-          
+
       - name: Run Backend Tests
         run: |
           cd backend
